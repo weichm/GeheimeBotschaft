@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Black & White Noisy Message</title>
+    <style>
+        #canvases {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .canvas-row {
+            display: flex;
+            gap: 20px;
+        }
+        .canvas-label {
+            width: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls" style="margin-bottom: 30px;">
+        <div style="margin: 10px 0;">
+            <label for="textinclear">Text:</label>
+            <textarea id="textinclear" style="width:200px;height:60px;">Geheim</textarea>
+        </div>
+        <div style="margin: 10px 0;">
+            <label for="maxNoiseGray">maxNoiseGray:</label>
+            <input type="range" id="maxNoiseGray" min="0" max="255" value="92">
+            <span id="maxNoiseGrayValue">92</span>
+            <label for="maxNoiseAlpha" style="margin-left:30px;">maxNoiseAlpha:</label>
+            <input type="range" id="maxNoiseAlpha" min="0" max="255" value="231">
+            <span id="maxNoiseAlphaValue">231</span>
+        </div>
+        <div style="margin: 10px 0;">
+            <label for="canvasWidth">Canvas Width:</label>
+            <input type="range" id="canvasWidth" min="100" max="800" value="531">
+            <span id="canvasWidthValue">531</span>
+            <label for="canvasHeight" style="margin-left:30px;">Canvas Height:</label>
+            <input type="range" id="canvasHeight" min="50" max="400" value="289">
+            <span id="canvasHeightValue">289</span>
+        </div>
+        <div style="margin: 10px 0;">
+            <label for="fontSize">Font Size:</label>
+            <input type="range" id="fontSize" min="10" max="100" value="100">
+            <span id="fontSizeValue">100</span>
+        </div>
+    </div>
+    <div id="explanation">
+        <p>
+            Bild 1 und Bild 2 sind zwei Rauschbilder, die jeweils Teile des Textes enthalten.
+            Legt man Bild 1 und Bild 2 übereinander (z.B. in Word), so erhält man den Originaltext zurück.
+        </p>
+    </div> 
+    <div id="canvases">
+        <div class="canvas-row">
+            <span class="canvas-label">Text:</span>
+        <canvas id="base" width="400" height="200" style="border:1px solid black;"></canvas>
+            <span class="canvas-label">Noise:</span>
+            <canvas id="noise" width="400" height="200" style="border:1px solid black;"></canvas>
+        </div>
+        <div class="canvas-row">
+            <span class="canvas-label">Bild 1:</span>
+            <canvas id="canvas1" width="400" height="200" style="border:1px solid black;"></canvas>
+            <span class="canvas-label">Bild 2:</span>
+            <canvas id="canvas2" width="400" height="200" style="border:1px solid black;"></canvas>
+        </div>
+        <div class="canvas-row">
+            <span class="canvas-label">Decoded:</span>
+            <canvas id="decoded" width="400" height="200" style="border:1px solid black;"></canvas>
+        </div>
+    </div>
+    <script>
+        const baseCanvas = document.getElementById('base');
+        const baseCtx = baseCanvas.getContext('2d');
+        const noiseCanvas = document.getElementById('noise');
+        const noiseCtx = noiseCanvas.getContext('2d');
+        const canvas1 = document.getElementById('canvas1');
+        const ctx1 = canvas1.getContext('2d');
+        const canvas2 = document.getElementById('canvas2');
+        const ctx2 = canvas2.getContext('2d');
+        const decodedCanvas = document.getElementById('decoded');
+        const decodedCtx = decodedCanvas.getContext('2d');
+        const textInput = document.getElementById('textinclear');
+
+        // Update event for textarea
+        textInput.addEventListener('input', updateAll);
+
+        const maxNoiseGraySlider = document.getElementById('maxNoiseGray');
+        const maxNoiseAlphaSlider = document.getElementById('maxNoiseAlpha');
+        const maxNoiseGrayValue = document.getElementById('maxNoiseGrayValue');
+        const maxNoiseAlphaValue = document.getElementById('maxNoiseAlphaValue');
+
+        function getMaxNoiseGray() {
+            return parseInt(maxNoiseGraySlider.value, 10);
+        }
+        function getMaxNoiseAlpha() {
+            return parseInt(maxNoiseAlphaSlider.value, 10);
+        }
+
+        maxNoiseGraySlider.addEventListener('input', () => {
+            maxNoiseGrayValue.textContent = maxNoiseGraySlider.value;
+            updateAll();
+        });
+        maxNoiseAlphaSlider.addEventListener('input', () => {
+            maxNoiseAlphaValue.textContent = maxNoiseAlphaSlider.value;
+            updateAll();
+        });
+
+        const canvasWidthSlider = document.getElementById('canvasWidth');
+        const canvasHeightSlider = document.getElementById('canvasHeight');
+        const canvasWidthValue = document.getElementById('canvasWidthValue');
+        const canvasHeightValue = document.getElementById('canvasHeightValue');
+
+        function setCanvasSize(width, height) {
+            [baseCanvas, noiseCanvas, canvas1, canvas2, decodedCanvas].forEach(canvas => {
+                canvas.width = width;
+                canvas.height = height;
+                canvas.style.width = width + "px";
+                canvas.style.height = height + "px";
+            });
+        }
+
+        canvasWidthSlider.addEventListener('input', () => {
+            canvasWidthValue.textContent = canvasWidthSlider.value;
+            setCanvasSize(parseInt(canvasWidthSlider.value, 10), parseInt(canvasHeightSlider.value, 10));
+            updateAll();
+        });
+        canvasHeightSlider.addEventListener('input', () => {
+            canvasHeightValue.textContent = canvasHeightSlider.value;
+            setCanvasSize(parseInt(canvasWidthSlider.value, 10), parseInt(canvasHeightSlider.value, 10));
+            updateAll();
+        });
+
+        const fontSizeSlider = document.getElementById('fontSize');
+        const fontSizeValue = document.getElementById('fontSizeValue');
+
+        fontSizeSlider.addEventListener('input', () => {
+            fontSizeValue.textContent = fontSizeSlider.value;
+            updateAll();
+        });
+
+        function drawBaseWithText() {
+            baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+            const fontSize = parseInt(fontSizeSlider.value, 10);
+            baseCtx.font = `bold ${fontSize}px Arial`;
+            baseCtx.fillStyle = 'black';
+            baseCtx.textAlign = 'center';
+            baseCtx.textBaseline = 'middle';
+            baseCtx.globalAlpha = 1;
+            baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+
+            // Draw multiline text, centered
+            const lines = textInput.value.split('\n');
+            const lineHeight = Math.round(fontSize * 1.2);
+            const totalHeight = lineHeight * lines.length;
+            const startY = baseCanvas.height / 2 - totalHeight / 2 + lineHeight / 2;
+            lines.forEach((line, i) => {
+                baseCtx.fillText(line, baseCanvas.width / 2, startY + i * lineHeight);
+            });
+        }
+
+        function drawNoise(maxGray=255, maxAlpha=255) {
+            // Fill noise with random grayscale and transparency
+            let imgData = noiseCtx.createImageData(noiseCanvas.width, noiseCanvas.height);
+            for (let i = 0; i < imgData.data.length; i += 4) {
+                let gray = Math.floor(Math.random() * (maxGray+ 1));
+                imgData.data[i] = imgData.data[i+1] = imgData.data[i+2] = gray;
+                imgData.data[i+3] = Math.floor(Math.random() * (maxAlpha + 1));
+            }
+            return imgData;
+        }
+
+        function andImg(imgA, imgB) {
+            // Bitwise AND on grayscale and alpha
+            let result = new ImageData(imgA.width, imgA.height);
+            for (let i = 0; i < imgA.data.length; i += 4) {
+                let grayA = imgA.data[i];
+                let grayB = imgB.data[i];
+                let alphaA = imgA.data[i+3];
+                let alphaB = imgB.data[i+3];
+                let gray = grayA & grayB;
+                let alpha = alphaA & alphaB;
+                result.data[i] = result.data[i+1] = result.data[i+2] = gray;
+                result.data[i+3] = alpha;
+            }
+            return result;
+        }
+
+        function notImg(img) {
+            // Bitwise NOT on grayscale and alpha
+            let result = new ImageData(img.width, img.height);
+            for (let i = 0; i < img.data.length; i += 4) {
+                result.data[i] = result.data[i+1] = result.data[i+2] = 255 - img.data[i];
+                result.data[i+3] = 255 - img.data[i+3];
+            }
+            return result;
+        }
+        function notImg2(img, maxGray2) {
+            // Bitwise NOT on grayscale and alpha
+            //return img;
+            let result = new ImageData(img.width, img.height);
+            for (let i = 0; i < img.data.length; i += 4) {
+                //result.data[i] = result.data[i+1] = result.data[i+2] = maxGray - img.data[i];
+                result.data[i] = result.data[i+1] = result.data[i+2] = maxGray2- img.data[i];
+                result.data[i+3] = img.data[i+3];
+                //result.data[i+3] = maxAlpha - img.data[i+3];
+            }
+            return result;
+        }
+
+        function orImg(imgA, imgB) {
+            // Bitwise OR on grayscale and alpha
+            let result = new ImageData(imgA.width, imgA.height);
+            for (let i = 0; i < imgA.data.length; i += 4) {
+                let grayA = imgA.data[i];
+                let grayB = imgB.data[i];
+                let alphaA = imgA.data[i+3];
+                let alphaB = imgB.data[i+3];
+                let gray = grayA | grayB;
+                let alpha = alphaA | alphaB;
+                result.data[i] = result.data[i+1] = result.data[i+2] = gray;
+                result.data[i+3] = alpha;
+            }
+            return result;
+        }
+
+        function updateAll() {
+            drawBaseWithText();
+            const mynoiseData = drawNoise();
+            noiseCtx.putImageData(mynoiseData, 0, 0);
+
+            const baseData = baseCtx.getImageData(0, 0, baseCanvas.width, baseCanvas.height);
+            const noiseData = noiseCtx.getImageData(0, 0, noiseCanvas.width, noiseCanvas.height);
+
+            const maxNoiseGray = getMaxNoiseGray();
+            const maxNoiseAlpha = getMaxNoiseAlpha();
+            // canvas1 = noise AND base (bitwise)
+            const noisedTextData = andImg(noiseData, baseData);
+            const addNoise1 = drawNoise(maxNoiseGray, maxNoiseAlpha);
+            const canvas1Data = orImg(noisedTextData, andImg(addNoise1, notImg(baseData)));
+            ctx1.putImageData(canvas1Data, 0, 0);
+
+            // canvas2 = noise AND NOT(base) (bitwise)
+            const notNoiseData = notImg(noiseData);
+            //const addNoise2 = drawNoise(maxNoiseGray, maxNoiseAlpha);
+            //const addNoise2 = notImg2(addNoise1, maxNoiseGray, maxNoiseAlpha);
+            const addNoise2 = notImg2(addNoise1, maxNoiseGray);
+            const noisedTextData2 = andImg(notNoiseData, baseData);
+            const canvas2Data = orImg(noisedTextData2, andImg(addNoise2, notImg(baseData)));
+            ctx2.putImageData(canvas2Data, 0, 0);
+
+            // decoded = canvas1 OR canvas2 (bitwise)
+            const decodedData = orImg(canvas1Data, canvas2Data);
+            decodedCtx.putImageData(decodedData, 0, 0);
+        }
+
+        setCanvasSize(
+            parseInt(canvasWidthSlider.value, 10),
+            parseInt(canvasHeightSlider.value, 10)
+        );
+        document.getElementById('textinclear').value = "geheime\nBotschaft";
+
+        textInput.addEventListener('input', updateAll);
+        updateAll();
+
+        // Set initial canvas size from slider values
+    </script>
+</body>
+</html>
